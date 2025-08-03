@@ -54,18 +54,17 @@ ent_meetings_needed = ent_pipeline / mtg_to_sqo
 total_meetings_needed = comm_meetings_needed + ent_meetings_needed
 
 # --- Solver Formulation ---
-st.subheader("📌 Optimal Headcount Suggestion")
 c = [0, 0, 0, 0, 0]  # AE Comm, AE Ent, AMs, BDR Comm, BDR Ent
 A_eq = [
-    [comm_quota, 0, 0, 0, 0],  # Comm AE contribution
-    [0, ent_quota, 0, 0, 0],   # Ent AE contribution
-    [0, 0, am_quota, 0, 0]     # AM contribution
+    [comm_quota, 0, 0, 0, 0],
+    [0, ent_quota, 0, 0, 0],
+    [0, 0, am_quota, 0, 0]
 ]
 b_eq = [comm_new_arr, ent_new_arr, expansion_arr]
 
 A_ub = [
-    [1, 1, 0, 0, 0],  # total AEs <= max
-    [0, 0, 0, 1, 1]   # total BDRs <= budget
+    [1, 1, 0, 0, 0],
+    [0, 0, 0, 1, 1]
 ]
 b_ub = [max_total_ae, bdr_budget]
 
@@ -82,17 +81,45 @@ res = linprog(c=c, A_eq=A_eq, b_eq=b_eq, A_ub=A_ub, b_ub=b_ub, bounds=bounds, me
 if res.success:
     ae_comm, ae_ent, ams, bdr_comm, bdr_ent = res.x
     total_bdr_meetings = bdr_comm * bdr_meetings_comm * 12 + bdr_ent * bdr_meetings_ent * 12
-    self_gen_meetings = total_meetings_needed - total_bdr_meetings
 
     df = pd.DataFrame({
-        "Role": ["Comm AEs", "Ent AEs", "AMs", "Comm BDRs", "Ent BDRs", "BDR Mtgs/year", "Total Meetings Needed", "AE Self-Gen Mtgs"],
-        scenario: [round(ae_comm), round(ae_ent), round(ams), round(bdr_comm), round(bdr_ent), round(total_bdr_meetings), round(total_meetings_needed), round(self_gen_meetings)]
-    }).set_index("Role")
+        "Metric": [
+            "Comm AEs", "Ent AEs", "AMs",
+            "Comm BDRs", "Ent BDRs",
+            "Expansion ARR", "Comm New ARR", "Ent New ARR",
+            "Comm Pipeline ($)", "Ent Pipeline ($)",
+            "Total Meetings Required"
+        ],
+        "Value": [
+            round(ae_comm), round(ae_ent), round(ams),
+            round(bdr_comm), round(bdr_ent),
+            round(expansion_arr), round(comm_new_arr), round(ent_new_arr),
+            round(comm_pipeline), round(ent_pipeline),
+            round(total_meetings_needed)
+        ]
+    }).set_index("Metric")
 
+    st.subheader("📊 Summary Table")
     st.dataframe(df)
 
-    st.subheader("📈 Visualizations")
-    st.bar_chart(df)
+    st.subheader("📉 Scenario Risk Sensitivity")
+    sensitivity = pd.DataFrame({
+        "Variable": ["Comm Win Rate -10%", "Ent Win Rate -10%", "ASP +5% (Comm)", "ASP +5% (Ent)"],
+        "Impact on Pipeline ($)": [
+            round(comm_new_arr / (comm_win_rate * 0.9)),
+            round(ent_new_arr / (ent_win_rate * 0.9)),
+            round(comm_new_arr * 0.95 / comm_win_rate),
+            round(ent_new_arr * 0.95 / ent_win_rate)
+        ]
+    })
+    st.dataframe(sensitivity)
+
+    st.subheader("📈 Pipeline Breakdown")
+    chart_df = pd.DataFrame({
+        "Segment": ["Commercial", "Enterprise"],
+        "Pipeline ($)": [comm_pipeline, ent_pipeline]
+    })
+    st.bar_chart(chart_df.set_index("Segment"))
 
 else:
     st.error("Optimization failed. Try adjusting constraints.")
